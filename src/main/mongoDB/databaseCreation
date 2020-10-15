@@ -1,0 +1,41 @@
+# This code file sets up the necessary MongoDB collections for the program
+
+# Create the database for the collections
+use taggingDB
+
+# First table, taggedItems, each document represents a tagged inventory item.
+# shellcheck disable=SC1065
+db.createCollection("taggedItems") {
+  "tagNumber": 0,
+  "loc_bldg": "XXXX",
+  "loc_flr": 0,
+  "loc_room": "X.XXX",
+  "make": "",
+  "model": "",
+  "serialNum": "",
+  "comment": "",
+  "purchaseDate": [1, 1, 2000],
+  "taggingDate": [1, 1, 2000],
+  "purchasingDoc": "",
+  "DeptContact": "",
+  "owner": "",
+  "federalProp": false,
+}
+
+# shellcheck disable=SC1065
+db.createCollection("purchaseDocs") {
+  "documentNumber": Int,
+  "document": Blob,
+  "associatedTags": List[Int],
+  "filingDate": Array[Int]
+}
+
+# shellcheck disable=SC1065
+db.createCollection("deptContacts") {
+  "contactID": Short,
+  "contactName": String,
+  "office_bldg": String,
+  "office_flr": Int,
+  "office_room": String,
+  "photo": Blob
+}
