@@ -2,35 +2,15 @@ package tagUploader
 
 import java.io.FileNotFoundException
 import java.text.SimpleDateFormat
-import java.util.{Date, InputMismatchException}
+import java.util.InputMismatchException
 
 import scala.io.StdIn
 import scala.util.matching.Regex
-import org.mongodb.scala.bson.codecs.Macros._
-import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.types.ObjectId
-import org.mongodb.scala.{MongoClient, MongoCollection, Observable}
-
-import scala.concurrent.Await
-import scala.concurrent.duration.{Duration, SECONDS}
 
 /** CLI that interacts with the user in the TagUploader program */
 class Cli {
-
-  // Set up and connect to the MongoDB database, assign the client, database, and collection variables
-  val codecRegistry = fromRegistries(fromProviders(classOf[TaggedItem]), MongoClient.DEFAULT_CODEC_REGISTRY)
-  val client: MongoClient = MongoClient()
-  val db = client.getDatabase("tagging").withCodecRegistry(codecRegistry)
-  val collection: MongoCollection[TaggedItem] = db.getCollection("taggedItems")
-
-  // helper functions for access and printing, to skip the Observable data type
-  def getResults[T](obs: Observable[T]): Seq[T] = {
-    Await.result(obs.toFuture(), Duration(10, SECONDS))
-  }
-
-  def printResults[T](obs: Observable[T]): Unit = {
-    getResults(obs).foreach(println(_))
-  }
+  val dao = new TaggingDao()
 
   // This method gathers all items in a collection and prints the resulting List.
   //printResults(collection.find())
@@ -53,7 +33,7 @@ class Cli {
     println("Manual         : manual fill out an item's data and upload")
     println("CSV  [filename]: upload multiple tagged items by CSV")
     println("JSON [filename]: upload multiple tagged items by JSON")
-    println("Install DB     : setup the necessary MongoDB databases")
+    println("List Items     : list all items currently in the database")
     println("Exit           : close the TIU program")
     println("**********************************************************")
     println("Please enter an option:")
@@ -72,7 +52,7 @@ class Cli {
       // get user choice of menu item with StdIn.readLine()
       StdIn.readLine() match {
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("manual") => {
-          var addingTag = new TaggedItem()
+          val addingTag = new TaggedItem()
           var str = ""
 
           println("Manual data entry mode initiated.")
@@ -92,13 +72,22 @@ class Cli {
           addingTag.serialNum = StdIn.readLine()
           println("What is the purchase date? (mm/dd/yyyy format)")
           str = StdIn.readLine()
-          addingTag.purchaseDate = str.
+          addingTag.purchaseDate = toDate(str)
           println("What is the tagging date? (mm/dd/yyyy format)")
+          str = StdIn.readLine()
+          addingTag.taggingDate = toDate(str)
           println("What is the purchase document number?")
+          addingTag.purchasingDoc = StdIn.readLine()
           println("What is the department inventory rep's ID?")
+          addingTag.deptContact = StdIn.readLine().toByte
           println("Who is the owner?")
+          addingTag.owner = StdIn.readLine()
           println("Is this federal property? (T/F)")
+          addingTag.federalProp = StdIn.readLine().toBoolean
           println("Any location/item comments?")
+          addingTag.comment = StdIn.readLine()
+
+          dao.addOne(addingTag)
         }
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("CSV") =>
           try {
@@ -107,7 +96,7 @@ class Cli {
             csvParser(arg, headers)
             } catch {
             case fnf: FileNotFoundException => println(s"Failed to find file $arg.")
-            case nonInt: InputMismatchException => println("Please enter an integer for the number of headers.")
+            case imm: InputMismatchException => println("Please enter an integer for the number of headers.")
           }
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("JSON") =>
           try {
@@ -115,7 +104,7 @@ class Cli {
           } catch {
             case fnf: FileNotFoundException => println(s"Failed to find file $arg")
           }
-        //case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("install") => {// installDatabases.sh}
+        case commandArgPattern(cmd) if cmd.equalsIgnoreCase("list") => dao.listAllItems
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("exit") => continueMenuLoop = false
         case notRecognized => println(s"$notRecognized not a recognized command")
       }
@@ -124,11 +113,6 @@ class Cli {
 
   /** First argument is the path to the file to be processed, the second is the number of header rows to skip. */
   def csvParser(filename: String, headers: Int): Unit = {
-
-    val format1: SimpleDateFormat = new SimpleDateFormat("MM/dd/yyyy")
-    var purchaseDate: Long = 1L
-    var tagDate: Long = 1L
-
     println("parser started!")
     // Open the file as a source
     val source = io.Source.fromFile(filename)
@@ -136,13 +120,10 @@ class Cli {
     // Pull each line, one by one, from the CSV, split it into a List of Strings at each ",", remove all white
     // space from before or after the value, convert Dates into milliseconds, and copy it into the ArrayBuffer.
     for (item <- source.getLines.drop(headers)) {
-      var add = item.split(",").map(_.trim)
-      purchaseDate = format1.parse(add(7)).getTime()
-      tagDate = format1.parse(add(8)).getTime()
-      println(s"Date conversion finished. purchase = $purchaseDate, tag = $tagDate")
-      var taggedItem: TaggedItem = new TaggedItem(new ObjectId, add(0), add(1), add(2).toByte, add(3), add(4), add(5),
-        add(6), purchaseDate, tagDate, add(9), add(10).toByte, add(11), add(12).toBoolean, add(13))
-      printResults(collection.insertOne(taggedItem))
+      val add = item.split(",").map(_.trim)
+      val taggedItem: TaggedItem = new TaggedItem(new ObjectId, add(0), add(1), add(2).toByte, add(3), add(4), add(5),
+        add(6), toDate(add(7)), toDate(add(8)), add(9), add(10).toByte, add(11), add(12).toBoolean, add(13))
+      dao.addOne(taggedItem)
     }
   }
 
@@ -150,8 +131,8 @@ class Cli {
 
   }
 
-  def toDate(str: String): Date = {
-    var res: Date = new Date("1/1/2020")
+  def toDate(str: String): Long = {
+    var res: Long = 1L
 
     // Create the three acceptable formats
     val format1 = new SimpleDateFormat("MM/dd/yyyy")
@@ -159,11 +140,11 @@ class Cli {
     val format3 = new SimpleDateFormat("MM.dd.yyyy")
 
     // If-Else block to convert the string into three space-separated chunks
-    if (str.contains("/")) {var res = format1.parse(str)}
-    else if (str.contains("-")) {var res = format2.parse(str)}
-    else if (str.contains(".")) {var res = format3.parse(str)}
+    if (str.contains("/")) {res = format1.parse(str).getTime}
+    else if (str.contains("-")) {res = format2.parse(str).getTime}
+    else if (str.contains(".")) {res = format3.parse(str).getTime}
     else {
-      println(s"Couldn't understand the date format, ${str}")
+      println(s"Couldn't understand the date format, $str")
       println("Please use the MM/DD/YYYY format with '/','-', or '.' .")
     }
 
