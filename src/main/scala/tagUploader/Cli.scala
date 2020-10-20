@@ -12,15 +12,6 @@ import org.bson.types.ObjectId
 class Cli {
   val dao = new TaggingDao()
 
-  // This method gathers all items in a collection and prints the resulting List.
-  //printResults(collection.find())
-
-  // This method inserts one document into the collection and prints whether it succeeded or not.
-  //printResults(collection.insertOne(taggedItems("Scala Comic!", Some(2025))))
-
-  // This method inserts multiple documents into the collection and prints whether it succeeded or not.
-  //printResults(collection.insertAll([{obj1}, {obj2}...])
-
   /** commandArgPattern is regex that we get as a command and  arguments to that command from user input */
   val commandArgPattern : Regex = "(\\w+)\\s*(.*)".r
 
@@ -30,9 +21,8 @@ class Cli {
 
   def printOptions(): Unit = {
     println("**********************************************************")
-    println("Manual         : manual fill out an item's data and upload")
     println("CSV  [filename]: upload multiple tagged items by CSV")
-    println("JSON [filename]: upload multiple tagged items by JSON")
+    println("Manual         : manually fill out an item's data")
     println("List Items     : list all items currently in the database")
     println("Exit           : close the TIU program")
     println("**********************************************************")
@@ -51,60 +41,82 @@ class Cli {
       printOptions()
       // get user choice of menu item with StdIn.readLine()
       StdIn.readLine() match {
-        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("manual") => {
-          val addingTag = new TaggedItem()
-          var str = ""
-
-          println("Manual data entry mode initiated.")
-          println("What is the tag number?")
-          addingTag.tagNum = StdIn.readLine()
-          println("What is the building code?")
-          addingTag.loc_bldg = StdIn.readLine()
-          println("What floor is the item on?")
-          addingTag.loc_flr = StdIn.readLine().toByte
-          println("What room is it in?")
-          addingTag.loc_room = StdIn.readLine()
-          println("What is the item's make?")
-          addingTag.make = StdIn.readLine()
-          println("What is the item's model?")
-          addingTag.model = StdIn.readLine()
-          println("What is the serial number?")
-          addingTag.serialNum = StdIn.readLine()
-          println("What is the purchase date? (mm/dd/yyyy format)")
-          str = StdIn.readLine()
-          addingTag.purchaseDate = toDate(str)
-          println("What is the tagging date? (mm/dd/yyyy format)")
-          str = StdIn.readLine()
-          addingTag.taggingDate = toDate(str)
-          println("What is the purchase document number?")
-          addingTag.purchasingDoc = StdIn.readLine()
-          println("What is the department inventory rep's ID?")
-          addingTag.deptContact = StdIn.readLine().toByte
-          println("Who is the owner?")
-          addingTag.owner = StdIn.readLine()
-          println("Is this federal property? (T/F)")
-          addingTag.federalProp = StdIn.readLine().toBoolean
-          println("Any location/item comments?")
-          addingTag.comment = StdIn.readLine()
-
-          dao.addOne(addingTag)
-        }
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("CSV") =>
           try {
             println("How many header rows (non-data rows at the top) are there?")
             val headers = StdIn.readLine().toInt
             csvParser(arg, headers)
-            } catch {
+          } catch {
             case fnf: FileNotFoundException => println(s"Failed to find file $arg.")
             case imm: InputMismatchException => println("Please enter an integer for the number of headers.")
           }
-        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("JSON") =>
-          try {
-            jsonParser(arg)
-          } catch {
-            case fnf: FileNotFoundException => println(s"Failed to find file $arg")
-          }
-        case commandArgPattern(cmd) if cmd.equalsIgnoreCase("list") => dao.listAllItems
+        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("manual") =>
+          val addingTag = new TaggedItem()
+          var str = ""
+          var checked = ""
+          var timeStamp: Long = 0
+
+          println("Manual data entry mode initiated.")
+          println("What is the tag number? (6-character alpha-numeric)")
+          addingTag.tagNum = StdIn.readLine()
+
+          println("What is the building code?")
+          str = StdIn.readLine()
+          checked = isBldg(str)
+          addingTag.loc_bldg = checked
+
+          println("What floor is the item on?")
+          addingTag.loc_flr = StdIn.readLine().toByte
+
+          println("What room is it in?")
+          addingTag.loc_room = StdIn.readLine()
+
+          println("What is the item's make?")
+          addingTag.make = StdIn.readLine()
+
+          println("What is the item's model?")
+          addingTag.model = StdIn.readLine()
+
+          println("What is the serial number?")
+          addingTag.serialNum = StdIn.readLine()
+
+          println("What is the purchase date? (mm/dd/yyyy format)")
+          str = StdIn.readLine()
+          timeStamp = toDate(str)
+          if (timeStamp < toDate("01/01/1971"))
+            println(s"$str seems too early.")
+          else if (timeStamp > System.currentTimeMillis())
+            println(s"$str is past today.")
+          else
+            addingTag.purchaseDate = timeStamp
+
+          println("What is the tagging date? (mm/dd/yyyy format)")
+          str = StdIn.readLine()
+          addingTag.taggingDate = toDate(str)
+
+          println("What is the purchase document number?")
+          addingTag.purchasingDoc = StdIn.readLine()
+
+          println("What is the department inventory rep's ID?")
+          addingTag.deptContact = StdIn.readLine().toByte
+
+          println("Who is the owner?")
+          addingTag.owner = StdIn.readLine()
+
+          println("Is this federal property? (T/F)")
+          str = StdIn.readLine()
+          if (str.equalsIgnoreCase("true"))
+            addingTag.federalProp = true
+          else if (str(0) == 't' || str(0) == 'T')
+            addingTag.federalProp = true
+          else
+            addingTag.federalProp = false
+
+          println("Any location/item comments?")
+          addingTag.comment = StdIn.readLine()
+
+          dao.addOne(addingTag)
+        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("list") => dao.listAllItems()
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("exit") => continueMenuLoop = false
         case notRecognized => println(s"$notRecognized not a recognized command")
       }
@@ -127,10 +139,6 @@ class Cli {
     }
   }
 
-  def jsonParser(filename: String): Unit = {
-
-  }
-
   def toDate(str: String): Long = {
     var res: Long = 1L
 
@@ -139,7 +147,7 @@ class Cli {
     val format2 = new SimpleDateFormat("MM-dd-yyyy")
     val format3 = new SimpleDateFormat("MM.dd.yyyy")
 
-    // If-Else block to convert the string into three space-separated chunks
+    // If-Else cascade to parse the three most likely date formats
     if (str.contains("/")) {res = format1.parse(str).getTime}
     else if (str.contains("-")) {res = format2.parse(str).getTime}
     else if (str.contains(".")) {res = format3.parse(str).getTime}
@@ -150,6 +158,29 @@ class Cli {
 
     // Return the resulting Date
     res
+  }
+
+  def isBldg(bldg: String): String = {
+    val buildingList: List[String] = List(
+      "ACA","ADH","AFP","AHG","ANB","AND","ARC","ART","ATT","BAT","BEL","BEN","BHD","BIO","BLD","BMA","BMC","BME",
+      "BOT","BRB","BRG","BTL","BUR","BWY","CAL","CBA","CCJ","CDA","CDL","CEE","CLA","CMA","CMB","CML","COM","CPE",
+      "CRB","CRD","CRH","CSA","DCP","DEV","DFA","DFF","EAS","ECJ","ENS","EPS","ERC","ETC","FAC","FDF","FDH","FNT",
+      "GAR","GDC","GEA","GEB","GOL","GRE","GRG","GSB","HMA","HRC","HRH","HSM","IC2","JCD","JES","JGB","JHH","JON",
+      "KIN","LBJ","LCH","LFH","LLA","LLB","LLC","LLD","LLE","LLF","LTD","LTH","MAG","MAI","MBB","MEZ","MHD","MMS",
+      "MNC","MRH","MSB","NEZ","NHB","NMS","NOA","NUR","PAC","PAI","PAR","PAT","PCL","PHD","PHR","POB","PPA","PPB",
+      "PPE","PPL","PP1","PP2","PP3","PP4","PP5","PP6","PP7","PP8","RHD","RLM","RSC","SAC","SAG","SBS","SEA","SER",
+      "SJG","SJH","SRH","SSB","SSW","STD","SUT","SWG","SZB","TCC","TMM","TNH","TRG","TSC","TSF","TSG","TTC","UA9",
+      "UIL","UNB","UPB","UTA","UTC","UTX","WAG","WCH","WEL","WIN","WMB","WRW","WWH"
+    )
+    if (buildingList.contains(bldg)) {
+      bldg
+    } else {
+      println(s"$bldg is not an appropriate building code, please enter an appropriate one.")
+      println(buildingList.toString())
+      val retry = StdIn.readLine()
+      isBldg(retry)
+      retry
+    }
   }
 
 }
