@@ -5,11 +5,12 @@ import java.text.SimpleDateFormat
 import org.mongodb.scala.bson.codecs.Macros._
 import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.codecs.configuration.CodecRegistry
+import org.mongodb.scala.bson.Document
 import org.mongodb.scala.{MongoClient, MongoCollection, MongoDatabase, Observable}
 
 import scala.concurrent.Await
 import scala.concurrent.duration.{Duration, SECONDS}
-import org.mongodb.scala.model.Filters
+import org.mongodb.scala.model.Filters._
 import org.mongodb.scala.model.Updates
 import org.mongodb.scala.model.Sorts
 import org.mongodb.scala.model.Projections
@@ -39,10 +40,18 @@ class TaggingDao {
     for (item <- itemsList) {
       purDate = dateFormat.format(item.purchaseDate)
       tagDate = dateFormat.format(item.taggingDate)
-      println(s"Tag ${item.tagNum}: ${item.make} ${item.model} SN: ${item.serialNum}")
-      println(s"Location: ${item.loc_bldg} ${item.loc_room} Owner: ${item.owner} Inv. Contact: ${item.deptContact}")
-      println(s"Purchased: $purDate on ${item.purchasingDoc}  Tagged: $tagDate")
+      println("**********************************")
+      println(s"Tag Number.....${item.tagNum}")
+      println(s"Item...........${item.make} ${item.model}")
+      println(s"Serial.........${item.serialNum}")
+      println(s"Location.......${item.loc_bldg} ${item.loc_room}")
+      println(s"Owner..........${item.owner}")
+      println(s"Inv. Rep.......${item.deptContact}")
+      println(s"Purchased......$purDate")
+      println(s"  on Document..${item.purchasingDoc}")
+      println(s"Tagged.........$tagDate")
       println(s"Comment: ${item.comment}")
+      println("**********************************")
       println()
     }
 
@@ -57,24 +66,32 @@ class TaggingDao {
   }
 
   def exists(searchItem : TaggedItem): Unit = {
-    printResults(collection.find(Filters.equal("tagNum", searchItem.tagNum)))
+    printResults(collection.find(equal("tagNum", searchItem.tagNum)))
   }
 
   def exists(searchItem : String): Unit = {
-    printResults(collection.find(Filters.equal("tagNum", searchItem)))
+    printResults(collection.find(equal("tagNum", searchItem)))
   }
 
   def update(updateItem: TaggedItem): Unit = {
-    printResults(collection.replaceOne(Filters.equal("tagNum", updateItem.tagNum), updateItem))
+    printResults(collection.replaceOne(equal("tagNum", updateItem.tagNum), updateItem))
   }
 
-//  def removeOne(del: TaggedItem): Unit = {
-//    printResults(collection.deleteOne(del))
-//  }
-//
-//  def removeMany(dels: List[TaggedItem]): Unit = {
-//    for (item <- dels)
-//    printResults(collection.deleteOne(item))
-//  }
+  def removeOne(del: TaggedItem): Unit = {
+    printResults(collection.findOneAndDelete(equal("tagNum", del.tagNum)))
+  }
+
+  def removeOne(del: String): Unit = {
+    printResults(collection.findOneAndDelete(equal("tagNum", del)))
+  }
+
+  def removeMany(dels: List[TaggedItem]): Unit = {
+    for (del <- dels)
+      printResults(collection.findOneAndDelete(equal("tagNum", del.tagNum)))
+  }
+
+  def removeAll(): Unit = {
+    printResults(collection.deleteMany(Document()))
+  }
 
 }

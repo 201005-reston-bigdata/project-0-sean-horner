@@ -20,14 +20,15 @@ class Cli {
   }
 
   def printOptions(): Unit = {
-    println("**********************************************************")
+    println("***********************************************************")
     println("CSV  [filename]: upload multiple tagged items by CSV")
     println("Manual         : manually fill out an item's data")
     println("List Items     : list all items currently in the database")
+    println("Delete All     : delete all items currently in the database")
+    println("Remove [Tag #] : remove item with specified tag number")
     println("Exit           : close the TIU program")
-    println("**********************************************************")
-    println("Please enter an option:")
-    println("")
+    println("***********************************************************")
+    println("Please enter an option:  ")
   }
 
   /** Runs the menu, prompting the user what they would like to do */
@@ -52,18 +53,13 @@ class Cli {
           }
         case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("manual") =>
           val addingTag = new TaggedItem()
-          var str = ""
-          var checked = ""
-          var timeStamp: Long = 0
 
           println("Manual data entry mode initiated.")
-          println("What is the tag number? (6-character alpha-numeric)")
+          println("What is the tag number?")
           addingTag.tagNum = StdIn.readLine()
 
           println("What is the building code?")
-          str = StdIn.readLine()
-          checked = isBldg(str)
-          addingTag.loc_bldg = checked
+          addingTag.loc_bldg = isGoodBldg(StdIn.readLine())
 
           println("What floor is the item on?")
           addingTag.loc_flr = StdIn.readLine().toByte
@@ -81,18 +77,10 @@ class Cli {
           addingTag.serialNum = StdIn.readLine()
 
           println("What is the purchase date? (mm/dd/yyyy format)")
-          str = StdIn.readLine()
-          timeStamp = toDate(str)
-          if (timeStamp < toDate("01/01/1971"))
-            println(s"$str seems too early.")
-          else if (timeStamp > System.currentTimeMillis())
-            println(s"$str is past today.")
-          else
-            addingTag.purchaseDate = timeStamp
+          addingTag.purchaseDate = toDate(isGoodDate(StdIn.readLine()))
 
           println("What is the tagging date? (mm/dd/yyyy format)")
-          str = StdIn.readLine()
-          addingTag.taggingDate = toDate(str)
+          addingTag.taggingDate = toDate(isGoodDate(StdIn.readLine()))
 
           println("What is the purchase document number?")
           addingTag.purchasingDoc = StdIn.readLine()
@@ -104,20 +92,24 @@ class Cli {
           addingTag.owner = StdIn.readLine()
 
           println("Is this federal property? (T/F)")
-          str = StdIn.readLine()
-          if (str.equalsIgnoreCase("true"))
-            addingTag.federalProp = true
-          else if (str(0) == 't' || str(0) == 'T')
-            addingTag.federalProp = true
-          else
-            addingTag.federalProp = false
+          addingTag.federalProp = isTrue(StdIn.readLine())
 
           println("Any location/item comments?")
           addingTag.comment = StdIn.readLine()
 
           dao.addOne(addingTag)
-        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("list") => dao.listAllItems()
-        case commandArgPattern(cmd, arg) if cmd.equalsIgnoreCase("exit") => continueMenuLoop = false
+        case commandArgPattern(cmd, arg)
+          if cmd.equalsIgnoreCase("list") =>
+            dao.listAllItems()
+        case commandArgPattern(cmd, arg)
+          if cmd.equalsIgnoreCase("delete") && arg.equalsIgnoreCase("all") =>
+            dao.removeAll()
+        case commandArgPattern(cmd, arg)
+          if cmd.equalsIgnoreCase("remove") =>
+            dao.removeOne(arg)
+        case commandArgPattern(cmd, arg)
+          if cmd.equalsIgnoreCase("exit") =>
+            continueMenuLoop = false
         case notRecognized => println(s"$notRecognized not a recognized command")
       }
     }
@@ -134,33 +126,45 @@ class Cli {
     for (item <- source.getLines.drop(headers)) {
       val add = item.split(",").map(_.trim)
       val taggedItem: TaggedItem = new TaggedItem(new ObjectId, add(0), add(1), add(2).toByte, add(3), add(4), add(5),
-        add(6), toDate(add(7)), toDate(add(8)), add(9), add(10).toByte, add(11), add(12).toBoolean, add(13))
+        add(6), toDate(add(7)), toDate(add(8)), add(9), add(10).toByte, add(11), isTrue(add(12)), add(13))
       dao.addOne(taggedItem)
     }
   }
 
   def toDate(str: String): Long = {
-    var res: Long = 1L
+    // Create the six acceptable formats: three split characters, two styles each.
+    val format1a = new SimpleDateFormat("MM/dd/yyyy")
+    val format1b = new SimpleDateFormat("yyyy/MM/dd")
+    val format2a = new SimpleDateFormat("MM-dd-yyyy")
+    val format2b = new SimpleDateFormat("yyyy-MM-dd")
+    val format3a = new SimpleDateFormat("MM.dd.yyyy")
+    val format3b = new SimpleDateFormat("yyyy.MM.dd")
 
-    // Create the three acceptable formats
-    val format1 = new SimpleDateFormat("MM/dd/yyyy")
-    val format2 = new SimpleDateFormat("MM-dd-yyyy")
-    val format3 = new SimpleDateFormat("MM.dd.yyyy")
-
-    // If-Else cascade to parse the three most likely date formats
-    if (str.contains("/")) {res = format1.parse(str).getTime}
-    else if (str.contains("-")) {res = format2.parse(str).getTime}
-    else if (str.contains(".")) {res = format3.parse(str).getTime}
-    else {
+    // if-else cascade to parse the six most likely date formats.
+    // Each if has a sub-if that determines either a or b style.
+    if (str.contains("/")) {
+      if (str.indexOf('/') == 2)
+        format1a.parse(str).getTime
+      else
+        format1b.parse(str).getTime
+    } else if (str.contains("-")) {
+      if (str.indexOf('-') == 2)
+        format2a.parse(str).getTime
+      else
+        format2b.parse(str).getTime
+    } else if (str.contains(".")) {
+      if (str.indexOf('.') == 2)
+        format3a.parse(str).getTime
+      else
+        format3b.parse(str).getTime
+    } else {
       println(s"Couldn't understand the date format, $str")
-      println("Please use the MM/DD/YYYY format with '/','-', or '.' .")
+      println("Please enter the date in the MM/DD/YYYY format:")
+      format1a.parse(StdIn.readLine()).getTime
     }
-
-    // Return the resulting Date
-    res
   }
 
-  def isBldg(bldg: String): String = {
+  def isGoodBldg(str: String): String = {
     val buildingList: List[String] = List(
       "ACA","ADH","AFP","AHG","ANB","AND","ARC","ART","ATT","BAT","BEL","BEN","BHD","BIO","BLD","BMA","BMC","BME",
       "BOT","BRB","BRG","BTL","BUR","BWY","CAL","CBA","CCJ","CDA","CDL","CEE","CLA","CMA","CMB","CML","COM","CPE",
@@ -172,15 +176,45 @@ class Cli {
       "SJG","SJH","SRH","SSB","SSW","STD","SUT","SWG","SZB","TCC","TMM","TNH","TRG","TSC","TSF","TSG","TTC","UA9",
       "UIL","UNB","UPB","UTA","UTC","UTX","WAG","WCH","WEL","WIN","WMB","WRW","WWH"
     )
-    if (buildingList.contains(bldg)) {
-      bldg
-    } else {
-      println(s"$bldg is not an appropriate building code, please enter an appropriate one.")
-      println(buildingList.toString())
-      val retry = StdIn.readLine()
-      isBldg(retry)
-      retry
-    }
+    var continue = true
+    var bldg = str.toUpperCase()
+
+    do {
+      if (buildingList.contains(bldg))
+        continue = false
+      else {
+        println(s"$bldg is not an appropriate building code, please enter an appropriate one.")
+        println(buildingList.toString())
+        bldg = StdIn.readLine().toUpperCase()
+      }
+    } while (continue)
+
+    bldg
+  }
+
+  def isGoodDate(str: String): String = {
+    var continue = true
+    var date = str
+
+    do {
+      if (toDate(date) < toDate("01/01/1950")) {
+        println(s"$date seems too early. Please enter the correct date:")
+        date = StdIn.readLine()
+      } else if (toDate(date) > System.currentTimeMillis()) {
+        println(s"$date is past today. Please enter the correct date:")
+        date = StdIn.readLine()
+      } else
+        continue = false
+    } while (continue)
+
+    date
+  }
+
+  def isTrue(str: String): Boolean = {
+    if (str.equalsIgnoreCase("true") || str.head.equals('t') || str.head.equals('T'))
+      true
+    else
+      false
   }
 
 }
