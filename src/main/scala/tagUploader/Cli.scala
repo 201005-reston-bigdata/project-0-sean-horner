@@ -124,10 +124,13 @@ class Cli {
     // Pull each line, one by one, from the CSV, split it into a List of Strings at each ",", remove all white
     // space from before or after the value, convert Dates into milliseconds, and copy it into the ArrayBuffer.
     for (item <- source.getLines.drop(headers)) {
-      val add = item.split(",").map(_.trim)
-      val taggedItem: TaggedItem = new TaggedItem(new ObjectId, add(0), add(1), add(2).toByte, add(3), add(4), add(5),
-        add(6), toDate(add(7)), toDate(add(8)), add(9), add(10).toByte, add(11), isTrue(add(12)), add(13))
-      dao.addOne(taggedItem)
+      if (item.length > 2) {
+        val add = item.split(",").map(_.trim)
+        val taggedItem: TaggedItem = new TaggedItem(new ObjectId, add(0), add(1), add(2).toByte, add(3), add(4), add(5),
+          add(6), toDate(add(7)), toDate(add(8)), add(9), add(10).toByte, add(11), isTrue(add(12)), add(13))
+        dao.addOne(taggedItem)
+      } else
+        println(s"Too little data for line, moving on.")
     }
   }
 
