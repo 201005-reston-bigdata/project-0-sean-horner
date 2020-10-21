@@ -26,7 +26,7 @@ class Cli {
     println("List Items     : list all items currently in the database")
     println("Delete All     : delete all items currently in the database")
     println("Remove [Tag #] : remove item with specified tag number")
-    println("Exit           : close the TIU program")
+    println("Exit           : close the ITP")
     println("***********************************************************")
     println("Please enter an option:  ")
   }
@@ -103,7 +103,9 @@ class Cli {
             dao.listAllItems()
         case commandArgPattern(cmd, arg)
           if cmd.equalsIgnoreCase("delete") && arg.equalsIgnoreCase("all") =>
-            dao.removeAll()
+            println("Are you sure you want to delete all database items? (T/F):")
+            if(isTrue(StdIn.readLine()))
+              dao.removeAll()
         case commandArgPattern(cmd, arg)
           if cmd.equalsIgnoreCase("remove") =>
             dao.removeOne(arg)
@@ -117,10 +119,8 @@ class Cli {
 
   /** First argument is the path to the file to be processed, the second is the number of header rows to skip. */
   def csvParser(filename: String, headers: Int): Unit = {
-    println("parser started!")
     // Open the file as a source
     val source = io.Source.fromFile(filename)
-    println("source linked, starting loop")
     // Pull each line, one by one, from the CSV, split it into a List of Strings at each ",", remove all white
     // space from before or after the value, convert Dates into milliseconds, and copy it into the ArrayBuffer.
     for (item <- source.getLines.drop(headers)) {
@@ -140,24 +140,20 @@ class Cli {
     val format3a = new SimpleDateFormat("MM.dd.yyyy")
     val format3b = new SimpleDateFormat("yyyy.MM.dd")
 
-    // if-else cascade to parse the six most likely date formats.
-    // Each if has a sub-if that determines either a or b style.
-    if (str.contains("/")) {
-      if (str.indexOf('/') == 2)
-        format1a.parse(str).getTime
-      else
-        format1b.parse(str).getTime
-    } else if (str.contains("-")) {
-      if (str.indexOf('-') == 2)
-        format2a.parse(str).getTime
-      else
-        format2b.parse(str).getTime
-    } else if (str.contains(".")) {
-      if (str.indexOf('.') == 2)
-        format3a.parse(str).getTime
-      else
-        format3b.parse(str).getTime
-    } else {
+    // if-else cascade to parse the six most likely date formats and checks if the given date is past now.
+    if (str.indexOf('/') == 2 && (format1a.parse(str).getTime < System.currentTimeMillis()))
+      format1a.parse(str).getTime
+    else if (str.indexOf('/') == 4 && (format1b.parse(str).getTime < System.currentTimeMillis()))
+      format1b.parse(str).getTime
+    else if (str.indexOf('-') == 2 && (format2a.parse(str).getTime < System.currentTimeMillis()))
+      format2a.parse(str).getTime
+    else if (str.indexOf('-') == 4 && (format2b.parse(str).getTime < System.currentTimeMillis()))
+      format2b.parse(str).getTime
+    else if (str.indexOf('.') == 2 && (format3a.parse(str).getTime < System.currentTimeMillis()))
+      format3a.parse(str).getTime
+    else if (str.indexOf('.') == 4 && (format3b.parse(str).getTime < System.currentTimeMillis()))
+      format3b.parse(str).getTime
+    else {
       println(s"Couldn't understand the date format, $str")
       println("Please enter the date in the MM/DD/YYYY format:")
       format1a.parse(StdIn.readLine()).getTime
